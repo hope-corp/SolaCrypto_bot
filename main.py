@@ -1,9 +1,10 @@
 import os
 import logging
+import threading
 import asyncio
 from flask import Flask, jsonify
 
-# Safely attempt to import python-dotenv without crashing if missing
+# Safely attempt to import python-dotenv
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -38,13 +39,13 @@ def health_check():
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Telegram /start command handler."""
     logger.info("Received /start command from user_id: %s", update.effective_user.id)
-    await update.message.reply_text("Bot is running and operational!")
+    await update.message.reply_text("Bot is active and receiving live updates!")
 
 async def log_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Telegram /log command handler to output text-based logs."""
     user_id = update.effective_user.id
-    logger.info("Log command executed by user_id: %s", user_id)
-    await update.message.reply_text("Log entry recorded successfully.")
+    logger.info("Live log requested by user_id: %s", user_id)
+    await update.message.reply_text(f"Live log update captured for user: {user_id}")
 
 def build_telegram_application():
     """Validates the bot token and builds the Telegram Application instance."""
@@ -67,29 +68,27 @@ def build_telegram_application():
     
     return application
 
-async def run_bot_and_flask():
-    """Runs the Telegram Bot polling alongside the Flask app."""
+def start_telegram_bot():
+    """Runs the Telegram Bot event loop in a dedicated thread."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
     telegram_app = build_telegram_application()
+    logger.info("Starting Telegram Bot polling loop...")
     
-    # Initialize and start Telegram bot polling
-    await telegram_app.initialize()
-    await telegram_app.start()
-    await telegram_app.updater.start_polling()
-    logger.info("Telegram Bot polling started.")
-
-    # Run Flask server
-    from werkzeug.serving import run_simple
-    loop = asyncio.get_running_loop()
-    
-    logger.info("Starting Flask HTTP server on 0.0.0.0:8080...")
-    await loop.run_in_executor(
-        None, 
-        lambda: run_simple("0.0.0.0", 8080, app, use_reloader=False)
-    )
+    # run_polling handles its own loop execution and blocking safely
+    telegram_app.run_polling(stop_signals=None)
 
 if __name__ == "__main__":
     try:
-        asyncio.run(run_bot_and_flask())
+        # Start Telegram Bot in a separate background thread so it doesn't block Flask
+        bot_thread = threading.Thread(target=start_telegram_bot, daemon=True)
+        bot_thread.start()
+        
+        # Start Flask Web Server on the main thread
+        logger.info("Starting Flask HTTP server on 0.0.0.0:8080...")
+        app.run(host="0.0.0.0", port=8080, debug=False, use_reloader=False)
+        
     except (KeyboardInterrupt, SystemExit):
         logger.info("Application stopped gracefully.")
     except Exception as e:
