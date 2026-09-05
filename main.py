@@ -2,7 +2,14 @@ import os
 import logging
 import asyncio
 from flask import Flask, jsonify
-from dotenv import load_dotenv
+
+# Safely attempt to import python-dotenv without crashing if missing
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -10,10 +17,7 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# Load environment variables from .env file if available
-load_dotenv()
-
-# Configure logging to output standard text logs only
+# Configure text-based logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
@@ -39,7 +43,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def log_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Telegram /log command handler to output text-based logs."""
     user_id = update.effective_user.id
-    logger.info("Log requested by user_id: %s", user_id)
+    logger.info("Log command executed by user_id: %s", user_id)
     await update.message.reply_text("Log entry recorded successfully.")
 
 def build_telegram_application():
@@ -47,17 +51,17 @@ def build_telegram_application():
     if not BOT_TOKEN or BOT_TOKEN.strip() == "":
         logger.critical(
             "FATAL: BOT_TOKEN is missing or empty. Ensure TELEGRAM_BOT_TOKEN "
-            "environment variable is properly configured in your container."
+            "environment variable is properly set in your container."
         )
         raise ValueError(
             "Invalid or missing TELEGRAM_BOT_TOKEN. "
-            "Please obtain a valid token from https://t.me/BotFather"
+            "Please pass a valid token via environment variables."
         )
     
     logger.info("Initializing Telegram Bot Application...")
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     
-    # Register handlers
+    # Register command handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("log", log_command))
     
@@ -67,13 +71,13 @@ async def run_bot_and_flask():
     """Runs the Telegram Bot polling alongside the Flask app."""
     telegram_app = build_telegram_application()
     
-    # Initialize and start Telegram bot in polling mode
+    # Initialize and start Telegram bot polling
     await telegram_app.initialize()
     await telegram_app.start()
     await telegram_app.updater.start_polling()
     logger.info("Telegram Bot polling started.")
 
-    # Run Flask development server (or use WSGI server like gunicorn in production)
+    # Run Flask server
     from werkzeug.serving import run_simple
     loop = asyncio.get_running_loop()
     
